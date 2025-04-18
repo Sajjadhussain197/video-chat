@@ -7,14 +7,14 @@ const VideoPlayer = ({ user }) => {
     if (!user.videoTrack) return;
     
     // When component mounts, play the video track
-    if (ref.current) {
-      user.videoTrack.play(ref.current);
-    }
+    if (ref.current && user.videoTrack && typeof user.videoTrack.play === 'function') {
+        user.videoTrack.play(ref.current);
+      }
+    // if (ref.current) {
+    //   user.videoTrack.play(ref.current);
+    // }
 
-    // Cleanup when unmounting
-    // return () => {
-    //   user.videoTrack.stop();
-    // };
+   
   }, [user.videoTrack]);
 
   // Show a placeholder if there's no video track

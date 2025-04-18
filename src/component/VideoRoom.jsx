@@ -19,10 +19,48 @@ const VideoRoom = ({
   const [localTracks, setLocalTracks] = useState([]);
   const hasJoinedRef = useRef(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [isVideoOff, setIsVideoOff] = useState(false);
+  const [isVideoOff, setIsVideoOff] = useState(false);  
+  const [isAlreadyConnected, setIsAlreadyConnected] = useState(false);
   
   // Determine the role based on userType
   const role = userType === "observer" ? "subscriber" : "publisher";
+
+  const checkIfAlreadyConnected = () => {
+    const storageKey = `agora_connected_${appointmentId}_${userId}`;
+    
+    // First check if we have a record in localStorage
+    const connectedTimestamp = localStorage.getItem(storageKey);
+    
+    if (connectedTimestamp) {
+      const now = new Date().getTime();
+      const timestamp = parseInt(connectedTimestamp);
+      
+      // If the timestamp is recent (within 5 seconds), consider it an active session
+      if (now - timestamp < 5000) {
+        console.log("User already connected in another tab");
+        setIsAlreadyConnected(true);
+        return true;
+      }
+    }
+
+const setConnected = () => {
+    localStorage.setItem(storageKey, new Date().getTime().toString());
+  };
+  setConnected();
+  
+  const interval = setInterval(setConnected, 2000);
+  const handleBeforeUnload = () => {
+    localStorage.removeItem(storageKey);
+    clearInterval(interval);
+  };
+  window.addEventListener('beforeunload', handleBeforeUnload);
+  return () => {
+    window.removeEventListener('beforeunload', handleBeforeUnload);
+    clearInterval(interval);
+    localStorage.removeItem(storageKey);
+  };
+};
+
 
   const handleUserJoined = async (user, mediaType) => {
     await client.subscribe(user, mediaType);
@@ -36,6 +74,7 @@ const VideoRoom = ({
         return [...prev, user];
       });
     }
+
     
     if (mediaType === "audio") {
       user.audioTrack.play();
@@ -56,6 +95,13 @@ const VideoRoom = ({
 
   useEffect(() => {
     if (hasJoinedRef.current) return;
+    // Check if this user is already connected in another tab
+    const cleanupConnectionCheck = checkIfAlreadyConnected();
+    if (isAlreadyConnected) {
+        return cleanupConnectionCheck;
+      }
+      
+    
     hasJoinedRef.current = true;
 
     client.on("user-published", handleUserJoined);
@@ -63,6 +109,10 @@ const VideoRoom = ({
 
     const init = async () => {
       try {
+        if (client.connectionState === 'CONNECTED' || client.connectionState === 'CONNECTING') {
+            console.log("Client already connected or connecting");
+            return;
+          }
         // Fetch token from your API
         const res = await fetch(`/api/agora?appointmentId=${appointmentId}&userId=${userId}&role=${role}`);
         
@@ -108,12 +158,15 @@ const VideoRoom = ({
         
       } catch (error) {
         console.error("Failed to join or create tracks:", error);
+
       }
     };
 
     init();
 
     return () => {
+        
+      cleanupConnectionCheck();
       client.off("user-published", handleUserJoined);
       client.off("user-left", handleUserLeft);
       
@@ -158,6 +211,26 @@ const VideoRoom = ({
     if (count === 2) return "grid-cols-2";
     return "grid-cols-3";
   };
+
+  if (isAlreadyConnected) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen w-full p-6 bg-gray-100">
+        <div className="bg-white p-8 rounded-lg shadow-md text-center max-w-md">
+          <h2 className="text-xl font-bold mb-4">Already Connected</h2>
+          <p className="mb-6">
+            You're already connected to this session in another tab or window. 
+            Close this tab or continue the session in your existing tab.
+          </p>
+          <button 
+            onClick={() => window.close()} 
+            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+          >
+            Close This Tab
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col min-h-screen w-full p-6">
